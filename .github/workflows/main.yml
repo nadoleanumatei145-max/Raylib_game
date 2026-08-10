@@ -1,0 +1,73 @@
+name: Process Video - Depth Map
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'URL direct către videoclip (opțional)'
+        required: false
+        type: string
+
+env:
+  # Forțează acțiunile să ruleze pe Node.js 24 (pentru testare)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  process-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # 1. Checkout codul (versiunea actualizată)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Python (versiunea actualizată)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          # Aici specificăm fișierul de dependințe pentru a elimina eroarea
+          cache: 'pip'
+          cache-dependency-path: '**/requirements.txt'
+
+      # 3. Instalează dependințele din requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # 4. Descarcă modelul (dacă nu există deja în repo)
+      - name: Download Depth Anything V2 ONNX model
+        run: |
+          echo "📥 Descărcare model Depth Anything V2 (ONNX)..."
+          wget -q --show-progress https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_small.onnx
+          echo "✅ Model descărcat!"
+
+      # 5. Obține videoclipul (URL sau local)
+      - name: Get video (URL sau local)
+        run: |
+          if [ -n "${{ github.event.inputs.video_url }}" ]; then
+            echo "📥 Descărcare de la URL..."
+            wget -q -O input_video.mp4 "${{ github.event.inputs.video_url }}"
+          elif [ -f "input_video.mp4" ]; then
+            echo "✅ Folosește videoclipul din repository"
+          else
+            echo "❌ Niciun videoclip găsit!"
+            exit 1
+          fi
+
+      # 6. Procesează videoclipul
+      - name: Process video
+        run: |
+          echo "🎬 Procesare..."
+          python process_video.py input_video.mp4 depth_output.mp4
+
+      # 7. Upload rezultat (versiunea actualizată)
+      - name: Upload depth video
+        uses: actions/upload-artifact@v4
+        with:
+          name: depth-video
+          path: depth_output.mp4
+          retention-days: 7
